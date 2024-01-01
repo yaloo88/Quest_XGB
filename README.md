@@ -56,7 +56,7 @@ Follow these steps:
    ```
    - This is to be used as a buy opportinity Discord alert system.
    - Add your `webhook_url` and your data\candles interval value to `scripts\xgboost_discord.py` (OneMinute, ThreeMinutes..)
-   - 
+
 ## Usage
 
 Quest Reborn is straightforward to use once set up:
