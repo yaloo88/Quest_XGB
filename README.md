@@ -8,7 +8,7 @@ Quest Reborn is a stock market data analysis tool designed to fetch, download, a
 - **Portfolio Market Data Analysis**: Downloads and analyzes the market data of your portfolio, applying machine learning algorithms for predictive insights.
 - **Custom Market List Monitoring**: Allows the creation of custom lists of markets to monitor, ensuring you keep an eye on specific sectors or stocks of interest.
 - **Candle Data Updating**: Regularly updates candle data to ensure the most current market information is used in predictions and analyses.
-
+![Alt text for the image](data/graphs/PFE_graph.png)
 ## Requirements
 
 1. To set up the Quest Reborn application, ensure you have Python 3.11 installed. 
@@ -21,7 +21,7 @@ Follow these steps:
 
 1. **Clone the Repository**:
    ```
-   git clone https://github.com/yaloo88/Quest_XGB
+   git clone https://github.com/yaloo88/Quest.git
    ```
 
 2. **Navigate to the Project Directory**:
@@ -39,23 +39,17 @@ Follow these steps:
    ```
    first_touch.bat
    ```
-   - Copy the content of `market_list\PORTFOLIO.csv` or any other list in the folder.
-   - Paste the content in the console when asked.
-   
-     
+
 5. **Update Candles and Predict**:
    ```
    predict.bat
    ```
-   - `predict.bat` will generate `Portfolio_Prediction.pdf`.
-   
-7. **Link to Your Discord Server**:
+
+6. **Link to Your Discord Server**:
     - Input your Discord key into the specified file.
    ```
    predict_discord.bat
    ```
-   - This is to be used as a buy opportinity Discord alert system.
-   - Add your `webhook_url` and your data\candles interval value to `scripts\xgboost_discord.py` (OneMinute, ThreeMinutes..)
 
 ## Usage
 
