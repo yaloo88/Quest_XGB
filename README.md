@@ -21,7 +21,7 @@ Follow these steps:
 
 1. **Clone the Repository**:
    ```
-   git clone https://github.com/yaloo88/Quest.git
+   git clone https://github.com/yaloo88/Quest_XGB.git
    ```
 
 2. **Navigate to the Project Directory**:
