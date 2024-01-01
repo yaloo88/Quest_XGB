@@ -9,6 +9,10 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from matplotlib import pyplot as plt
 import json
 from matplotlib.backends.backend_pdf import PdfPages
+import concurrent.futures
+import tempfile
+from PyPDF2 import PdfMerger
+import io
 
 def extract_symbol_interval(filename):
     parts = filename.split('_')
@@ -165,89 +169,124 @@ def train_evaluate_xgboost_model(X_train, y_train, X_test, y_test):
     return model, mae, rmse, avg_mae_cv
 
 def train_predict_plot(X_train_high, y_train_high, X_train_low, y_train_low, 
-                       X_test_high, y_test_high, X_test_low, y_test_low, symbol_description,symbol,pdf
-                       ):
-    # Assuming train_evaluate_xgboost_model and send_discord_alert are defined elsewhere
+                       X_test_high, y_test_high, X_test_low, y_test_low, 
+                       predictions_high, predictions_low,  # Include these as arguments
+                       symbol_description, symbol, pdf=None):
 
-    # Train and predict for high prices
+    # Create an in-memory buffer
+    buffer = io.BytesIO()
+
+    # Start a new PDF pages context using the buffer
+    with PdfPages(buffer) as pdf:
+        # Creating the plot
+        plt.figure(figsize=(15, 8))
+        # Plot actual high and low prices
+        plt.plot(y_test_high.index, y_test_high, color='blue', label='Actual Band')
+        plt.plot(y_test_low.index, y_test_low, color='blue')
+        plt.fill_between(y_test_high.index, y_test_high, y_test_low, facecolor='blue', alpha=0.2)
+
+        # Plot predicted high and low prices
+        plt.plot(y_test_high.index, predictions_high, linestyle='dashed', color='red', label='Predicted Band')
+        plt.plot(y_test_low.index, predictions_low, linestyle='dashed', color='red')
+        plt.fill_between(y_test_high.index, predictions_high, predictions_low, facecolor='red', alpha=0.2)
+
+        # Flagging logic for anomalies
+        flags_high = (y_test_high > predictions_high * 1.01)
+        flagged_indices_high = y_test_high.index[flags_high]
+
+        flags_low = (y_test_low < predictions_low * 0.99)
+        flagged_indices_low = y_test_low.index[flags_low]
+
+        # Plot flagged points
+        plt.scatter(flagged_indices_high, y_test_high[flags_high], color='red', label='Sell')
+        plt.scatter(flagged_indices_low, y_test_low[flags_low], color='green', label='Buy')
+
+        # Plot enhancements
+        plt.xlabel("Timestamp")
+        plt.ylabel("Price")
+        plt.legend()
+        plt.xticks(rotation=45)
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.title(f"{symbol_description} ({symbol})")
+        pdf.savefig()
+        plt.close()
+
+    # Seek to the beginning of the buffer
+    buffer.seek(0)
+    return buffer
+
+def process_file(filename, directory):
+    # Construct full file path
+    file_path = os.path.join(directory, filename)
+    
+    # Extract information from the filename
+    info = extract_symbol_info(filename)
+    if info is None:
+        print(f"Skipping {filename}, information extraction failed.")
+        return
+
+    symbol, interval, end_value, symbol_description, symbol_id, security_type, listing_exchange, is_tradable, is_quotable, currency = info
+    print(f"Processing {symbol_description} ({symbol})")
+
+    # Read CSV data
+    data = pd.read_csv(file_path)
+    data = calculate_technical_indicators(data)
+    
+    # Prepare and train data
+    (X_train_high, X_test_high, y_train_high, y_test_high), (X_train_low, X_test_low, y_train_low, y_test_low) = prepare_train_test_data(data)
+
+    # Train and evaluate the models
     model_high, _, _, _ = train_evaluate_xgboost_model(X_train_high, y_train_high, X_test_high, y_test_high)
     predictions_high = model_high.predict(X_test_high)
 
-    # Train and predict for low prices
     model_low, _, _, _ = train_evaluate_xgboost_model(X_train_low, y_train_low, X_test_low, y_test_low)
     predictions_low = model_low.predict(X_test_low)
 
-    # Creating the plot
-    plt.figure(figsize=(15, 8))
-    # Plot actual high and low prices
-    plt.plot(y_test_high.index, y_test_high, color='blue', label='Actual Band')
-    plt.plot(y_test_low.index, y_test_low, color='blue')
-    plt.fill_between(y_test_high.index, y_test_high, y_test_low, facecolor='blue', alpha=0.2)
+    # Pass the predictions to the train_predict_plot function
+    plot_buffer = train_predict_plot(X_train_high, y_train_high, X_train_low, y_train_low, 
+                                     X_test_high, y_test_high, X_test_low, y_test_low, 
+                                     predictions_high, predictions_low,  # Added here
+                                     symbol_description, symbol)
 
-    # Plot predicted high and low prices
-    plt.plot(y_test_high.index, predictions_high, linestyle='dashed', color='red', label='Predicted Band')
-    plt.plot(y_test_low.index, predictions_low, linestyle='dashed', color='red')
-    plt.fill_between(y_test_high.index, predictions_high, predictions_low, facecolor='red', alpha=0.2)
-
-    # Flagging logic for anomalies
-    flags_high = (y_test_high > predictions_high * 1.01)
-    flagged_indices_high = y_test_high.index[flags_high]
-
-    flags_low = (y_test_low < predictions_low * 0.99)
-    flagged_indices_low = y_test_low.index[flags_low]
-
-    # Plot flagged points
-    plt.scatter(flagged_indices_high, y_test_high[flags_high], color='red', label='Sell')
-    plt.scatter(flagged_indices_low, y_test_low[flags_low], color='green', label='Buy')
-
-    # Plot enhancements
-    plt.xlabel("Timestamp")
-    plt.ylabel("Price")
-    plt.legend()
-    plt.xticks(rotation=45)
-    plt.grid(True, linestyle='--', alpha=0.7)
-    # Add a title to your graph
-    plt.title(f"{symbol_description} ({symbol})")
-    # Save the plot to a PDF and close the plot
-    pdf.savefig()
-    plt.close()
+    # Return the buffer for further processing
+    return plot_buffer
 
 
-    return model_high, predictions_high, model_low, predictions_low, flagged_indices_high, flagged_indices_low
 
 def process_all_files(directory):
     pdf_filename = 'Portfolio_Prediction.pdf'
 
-    # Check if the file exists and delete it
-    if os.path.exists(pdf_filename):
-        os.remove(pdf_filename)
+    # Using ProcessPoolExecutor to parallelize file processing
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # Create a list of futures
+        futures = [executor.submit(process_file, filename, directory) 
+                   for filename in os.listdir(directory) 
+                   if filename.endswith(".csv")]
 
-    with PdfPages(pdf_filename) as pdf:
-        for filename in os.listdir(directory):
-            if filename.endswith(".csv"):
-                # Construct the full file path
-                file_path = os.path.join(directory, filename)
-                info = extract_symbol_info(filename)
-                if info is None:
-                    continue
-                symbol, interval, end_value, symbol_description, symbol_id, security_type, listing_exchange, is_tradable, is_quotable, currency = info
-                print(f"Processing {symbol_description}")
+        # Create a PdfMerger object
+        pdf_merger = PdfMerger()
 
-                # Read CSV data
-                data = pd.read_csv(file_path)
-                data = calculate_technical_indicators(data)
-                
-                # Prepare and train data
-                (X_train_high, X_test_high, y_train_high, y_test_high), (X_train_low, X_test_low, y_train_low, y_test_low) = prepare_train_test_data(data)
-                model_high, mae_high, rmse_high, avg_mae_cv_high = train_evaluate_xgboost_model(X_train_high, y_train_high, X_test_high, y_test_high)
-                model_low, mae_low, rmse_low, avg_mae_cv_low = train_evaluate_xgboost_model(X_train_low, y_train_low, X_test_low, y_test_low)
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                # Get the result (buffer) from the future
+                buffer = future.result()
 
-                # Plot and save to PDF
-                train_predict_plot(X_train_high, y_train_high, X_train_low, y_train_low, 
-                                    X_test_high, y_test_high, X_test_low, y_test_low, symbol_description, symbol, pdf)
+                # Append the buffer to the merger
+                pdf_merger.append(buffer)
 
-process_all_files('data/candles')  # Ensure the directory path is correct
+                # Close the buffer to release resources
+                buffer.close()
 
+            except Exception as e:
+                print(f"Exception occurred: {e}")
 
+        # Write the merged PDF to a file
+        with open(pdf_filename, 'wb') as f_out:
+            pdf_merger.write(f_out)
 
+        # Close the PdfMerger to release resources
+        pdf_merger.close()
 
+if __name__ == '__main__':
+    # Your main script execution
+    process_all_files('data/candles')  # Ensure the directory path is correct
