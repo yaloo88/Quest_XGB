@@ -26,7 +26,7 @@ Follow these steps:
 
 2. **Navigate to the Project Directory**:
    ```
-   cd Quest
+   cd Quest_XGB
    ```
 
 3. **Install Dependencies**:
